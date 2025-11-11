@@ -1,0 +1,6 @@
+- name: Install PHP and Java with tags
+  hosts: webservers
+  become: yes
+
+  roles:
+    - { role: install-php, tags: ['php'] }

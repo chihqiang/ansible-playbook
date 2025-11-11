@@ -1,0 +1,48 @@
+# 1. 拉取最新代码到应用目录
+- name: 拉取最新代码到应用目录
+  git:
+    repo: "{{ app_repo }}"                         
+    dest: "{{ wwwroot }}/{{ domain }}"             
+    version: "{{ app_version }}"                   
+    force: yes
+    accept_hostkey: yes
+
+# 2. 使用 composer 安装依赖
+- name: 安装 Composer 依赖
+  shell: |
+    cd {{ wwwroot }}/{{ domain }}
+    /usr/local/bin/composer install
+
+# 3. 设置代码目录权限
+- name: 设置项目文件权限
+  file:
+    path: "{{ wwwroot }}/{{ domain }}"
+    recurse: yes
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+
+# 4. 创建 runtime 目录（日志/缓存路径）
+- name: 创建 runtime 目录
+  file:
+    path: "{{ wwwroot }}/{{ domain }}/runtime"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0775'
+
+# 5. 检查 Nginx 配置文件是否已存在
+- name: 检查 Nginx 配置文件是否存在
+  stat:
+    path: "/etc/nginx/conf.d/{{ domain }}.conf"
+  register: nginx_conf_stat
+
+# 6. 初始化 Nginx 配置（仅首次部署时写入）
+- name: 初始化 Nginx 配置
+  template:
+    src: nginx-php.conf.j2
+    dest: "/etc/nginx/conf.d/{{ domain }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  when: not nginx_conf_stat.stat.exists
+  notify: reload nginx

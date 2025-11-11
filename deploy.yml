@@ -1,0 +1,6 @@
+- name: deploy you project
+  hosts: webservers
+  become: yes
+
+  roles:
+    - { role: deploy-php, tags: ['php'] }

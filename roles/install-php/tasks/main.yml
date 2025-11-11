@@ -1,0 +1,78 @@
+- name: 清理系统中已存在的 ondrej PHP 源
+  shell: |
+    rm -rf /etc/apt/sources.list.d/*ondrej*.list
+  ignore_errors: yes
+
+- name: 安装 Ubuntu 软件属性管理工具（software-properties-common）
+  apt:
+    name: software-properties-common
+    state: present
+    update_cache: yes
+  async: 300
+  poll: 10
+
+- name: 添加 ondrej/php PPA 仓库
+  apt_repository:
+    repo: ppa:ondrej/php
+    state: present
+  register: ppa_add_result
+  until: ppa_add_result is succeeded
+  retries: 5
+  delay: 10
+
+- name: 更新系统软件包缓存信息
+  apt:
+    update_cache: yes
+
+- name: 安装 PHP 运行环境、扩展模块、Nginx 服务器和 Git 版本控制工具
+  apt:
+    name:
+      - git
+      - php{{ php_version }}
+      - php{{ php_version }}-dev
+      - php{{ php_version }}-common
+      - php{{ php_version }}-fpm
+      - php{{ php_version }}-mbstring
+      - php{{ php_version }}-zip   
+      - php{{ php_version }}-opcache
+      - php{{ php_version }}-mcrypt
+      - php{{ php_version }}-decimal
+      - php{{ php_version }}-gd
+      - php{{ php_version }}-imagick
+      - php{{ php_version }}-xml
+      - php{{ php_version }}-redis
+      - php{{ php_version }}-bcmath
+      - php{{ php_version }}-curl
+      - php{{ php_version }}-mysql
+      - php{{ php_version }}-swoole
+    state: present
+  ignore_errors: yes
+
+- name: 安装 Composer
+  get_url:
+    url: https://getcomposer.org/download/latest-stable/composer.phar
+    dest: /usr/local/bin/composer
+    mode: '0755'
+  when: not lookup('ansible.builtin.file', '/usr/local/bin/composer', errors='ignore') is file
+
+- name: 批量修改 PHP CLI 和 FPM 配置多个参数
+  lineinfile:
+    path: "{{ item.path }}"
+    regexp: "^{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+  loop:
+    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "post_max_size", value: "{{ php_post_max_size }}" }
+    - { path: "/etc/php/{{ php_version }}/fpm/php.ini", key: "post_max_size", value: "{{ php_post_max_size }}" }
+    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "upload_max_filesize", value: "{{ php_upload_max_filesize }}" }
+    - { path: "/etc/php/{{ php_version }}/fpm/php.ini", key: "upload_max_filesize", value: "{{ php_upload_max_filesize }}" }
+    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "max_execution_time", value: "{{ php_max_execution_time }}" }
+    - { path: "/etc/php/{{ php_version }}/fpm/php.ini", key: "max_execution_time", value: "{{ php_max_execution_time }}" }
+
+- name: 配置 PHP-FPM www.conf
+  template:
+    src: www.conf.j2
+    dest: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart php-fpm

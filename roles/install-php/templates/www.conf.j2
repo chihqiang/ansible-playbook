@@ -1,0 +1,41 @@
+; 定义 FPM 池名称为 'www'
+[www]
+
+; 设置运行用户
+user = www-data
+
+; 设置运行用户组
+group = www-data
+
+; 设置监听的 Unix Socket 路径
+listen = /run/php/php{{ php_version }}-fpm.sock
+
+; 设置 Socket 所属用户
+listen.owner = www-data
+
+; 设置 Socket 所属用户组
+listen.group = www-data
+
+; 设置进程管理方式为 dynamic
+pm = dynamic
+
+; 最大子进程数量
+pm.max_children = {{ pm_max_children | default(80) }}
+
+; 启动时预创建的子进程数
+pm.start_servers =  {{ pm_start_servers | default(5) }}
+
+; 保持的最小空闲进程数
+pm.min_spare_servers = {{ pm_min_spare_servers | default(5) }}
+
+; 保持的最大空闲进程数
+pm.max_spare_servers = {{ pm_max_spare_servers | default(20) }}
+
+; 慢请求日志路径
+slowlog = log/$pool.log.slow
+
+; 允许连接此池的客户端 IP（127.0.0.1 表示仅本机）
+listen.allowed_clients = 127.0.0.1
+
+; 访问日志路径
+access.log = log/$pool.access.log
