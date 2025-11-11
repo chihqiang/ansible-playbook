@@ -1,78 +1,105 @@
+# 清理系统中已存在的 ondrej PHP 源（避免新旧源冲突）
+# ondrej/php 是 Ubuntu 官方外的 PHP 第三方源，提供多个 PHP 版本和最新扩展
 - name: 清理系统中已存在的 ondrej PHP 源
   shell: |
+    # 删除所有包含 "ondrej" 关键字的源列表文件（匹配 /etc/apt/sources.list.d/ 目录下的相关文件）
     rm -rf /etc/apt/sources.list.d/*ondrej*.list
-  ignore_errors: true
+  ignore_errors: true  # 即使没有旧源文件（删除失败），也不影响后续任务执行
 
+# 安装 Ubuntu 软件属性管理工具（software-properties-common）
+# 该工具提供 add-apt-repository 命令，用于添加 PPA 仓库（后续添加 ondrej/php 源必需）
 - name: 安装 Ubuntu 软件属性管理工具（software-properties-common）
-  apt:
-    name: software-properties-common
-    state: present
-    update_cache: yes
-  async: 300
-  poll: 10
+  apt:  # Ansible 内置模块，用于 Ubuntu/Debian 系统的软件包管理
+    name: software-properties-common  # 要安装的软件包名称
+    state: present  # 状态：确保软件包已安装（若未安装则自动安装）
+    update_cache: yes  # 安装前先更新 apt 软件包缓存（避免因缓存过期导致安装失败）
+  async: 300  # 异步执行超时时间：最长等待 300 秒（5 分钟）
+  poll: 10  # 轮询间隔：每 10 秒检查一次安装状态（应对网络慢导致的安装耗时）
 
+# 添加 ondrej/php PPA 仓库（核心步骤：获取多版本 PHP 及扩展的软件源）
+# PPA（Personal Package Archive）：个人软件包仓库，这里是 ondrej 维护的 PHP 专用源
 - name: 添加 ondrej/php PPA 仓库
-  apt_repository:
-    repo: ppa:ondrej/php
-    state: present
-  register: ppa_add_result
-  until: ppa_add_result is succeeded
-  retries: 5
-  delay: 10
+  apt_repository:  # Ansible 内置模块，用于管理 Ubuntu 的 APT 仓库
+    repo: ppa:ondrej/php  # 要添加的 PPA 仓库地址（固定格式：ppa:维护者/仓库名）
+    state: present  # 状态：确保仓库已添加（若未添加则自动添加）
+  register: ppa_add_result  # 注册任务结果到变量，用于后续重试判断
+  until: ppa_add_result is succeeded  # 重试终止条件：仓库添加成功为止
+  retries: 5  # 最大重试次数：最多尝试 5 次（含首次执行共 6 次）
+  delay: 10  # 重试间隔：每次失败后等待 10 秒再重试（避免频繁请求导致仓库拒绝）
 
+# 更新系统软件包缓存信息（添加新仓库后必需步骤）
+# 目的：让系统识别新添加的 ondrej/php 源中的软件包，确保后续能安装到对应版本
 - name: 更新系统软件包缓存信息
   apt:
-    update_cache: yes
+    update_cache: yes  # 仅执行 apt update 命令，更新软件包索引缓存
 
+# 安装核心依赖软件包：PHP 运行环境、扩展模块、Nginx 服务器、Git 版本控制工具
+# 按需安装多个 PHP 扩展（覆盖 Web 开发常用场景：数据库、缓存、文件处理、加密等）
 - name: 安装 PHP 运行环境、扩展模块、Nginx 服务器和 Git 版本控制工具
   apt:
-    name:
-      - git
-      - php{{ php_version }}
-      - php{{ php_version }}-dev
-      - php{{ php_version }}-common
-      - php{{ php_version }}-fpm
-      - php{{ php_version }}-mbstring
-      - php{{ php_version }}-zip   
-      - php{{ php_version }}-opcache
-      - php{{ php_version }}-mcrypt
-      - php{{ php_version }}-decimal
-      - php{{ php_version }}-gd
-      - php{{ php_version }}-imagick
-      - php{{ php_version }}-xml
-      - php{{ php_version }}-redis
-      - php{{ php_version }}-bcmath
-      - php{{ php_version }}-curl
-      - php{{ php_version }}-mysql
-      - php{{ php_version }}-swoole
-    state: present
-  ignore_errors: true
+    name:  # 要安装的软件包列表（支持变量替换 php_version，动态适配不同 PHP 版本）
+      - git  # 版本控制工具（后续拉取代码、Composer 依赖管理必需）
+      - php{{ php_version }}  # PHP 核心运行环境（如 php7.4、php8.1，由变量指定版本）
+      - php{{ php_version }}-dev  # PHP 开发依赖（编译自定义扩展时必需）
+      - php{{ php_version }}-common  # PHP 通用扩展（基础功能依赖）
+      - php{{ php_version }}-fpm  # PHP-FPM 进程管理器（Nginx 与 PHP 通信的核心组件）
+      - php{{ php_version }}-mbstring  # 多字节字符串处理扩展（支持中文等多语言）
+      - php{{ php_version }}-zip  # ZIP 压缩/解压扩展（Composer 依赖安装、文件上传常用）
+      - php{{ php_version }}-opcache  # PHP  opcode 缓存扩展（提升 PHP 执行性能）
+      - php{{ php_version }}-mcrypt  # 加密扩展（部分老项目依赖，如数据加密/解密）
+      - php{{ php_version }}-decimal  # 高精度小数处理扩展（金融、计算类场景常用）
+      - php{{ php_version }}-gd  # 图像处理扩展（生成验证码、图片裁剪/缩放等）
+      - php{{ php_version }}-imagick  # 高级图像处理扩展（支持更多图片格式，如 WebP）
+      - php{{ php_version }}-xml  # XML 解析扩展（API 交互、配置文件解析常用）
+      - php{{ php_version }}-redis  # Redis 缓存扩展（连接 Redis 服务器，提升数据读写性能）
+      - php{{ php_version }}-bcmath  # 高精度数学计算扩展（大数字运算，避免精度丢失）
+      - php{{ php_version }}-curl  # HTTP 请求扩展（调用第三方 API、下载文件等）
+      - php{{ php_version }}-mysql  # MySQL 数据库扩展（连接 MySQL/MariaDB 数据库）
+      - php{{ php_version }}-swoole  # Swoole 异步扩展（用于高性能 CLI 应用、WebSocket 等）
+    state: present  # 状态：确保所有列出的软件包均已安装
+  ignore_errors: true  # 忽略个别扩展安装失败（如部分 PHP 版本不支持某扩展，不阻塞整体部署）
 
+# 安装 Composer（PHP 依赖管理工具，项目依赖包安装/更新必需）
 - name: 安装 Composer
-  get_url:
-    url: https://getcomposer.org/download/latest-stable/composer.phar
-    dest: /usr/local/bin/composer
-    mode: '0755'
-  when: not lookup('ansible.builtin.file', '/usr/local/bin/composer', errors='ignore') is file
+  shell: |
+    # 1. 用 PHP 内置 copy 函数下载 Composer 官方安装脚本（避免依赖 wget/curl）
+    php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+    # 2. 执行安装脚本：安装到 /usr/local/bin（系统全局路径），命名为 composer（直接命令调用）
+    php composer-setup.php --install-dir=/usr/local/bin --filename=composer{{ php_version }}
+    # 3. 安装完成后删除临时安装脚本，清理环境
+    rm composer-setup.php
+  async: 300  # 异步执行超时：最长 300 秒（应对网络慢导致的下载/安装耗时）
+  poll: 10  # 每 10 秒检查一次执行状态
+  register: composer_install_result  # 注册结果变量，用于重试判断
+  until: composer_install_result is succeeded  # 重试直到安装成功
+  retries: 5  # 最大重试 5 次
+  delay: 10  # 每次重试间隔 10 秒
+  ignore_errors: true  # 忽略安装失败（非核心场景下不阻塞后续任务）
 
+# 批量修改 PHP CLI 和 FPM 配置文件的关键参数（适配项目运行需求）
+# 涉及的参数均为 Web 项目常用配置：文件上传大小、脚本执行时间等
 - name: 批量修改 PHP CLI 和 FPM 配置多个参数
-  lineinfile:
-    path: "{{ item.path }}"
-    regexp: "^{{ item.key }}\\s*="
-    line: "{{ item.key }} = {{ item.value }}"
-  loop:
-    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "post_max_size", value: "{{ php_post_max_size }}" }
+  lineinfile:  # Ansible 内置模块，用于修改文件中的指定行（精准匹配替换）
+    path: "{{ item.path }}"  # 目标配置文件路径（通过 loop 循环遍历 CLI 和 FPM 两个配置文件）
+    regexp: "^{{ item.key }}\\s*="  # 匹配规则：以目标参数名开头，后面跟任意空格+等号（避免匹配注释行）
+    line: "{{ item.key }} = {{ item.value }}"  # 替换后的内容：参数名 = 配置值（值通过变量动态传入）
+  loop:  # 循环列表：批量处理 6 个配置项（CLI 和 FPM 各 3 个参数）
+    # PHP CLI 配置（命令行模式，如 Composer 执行、脚本调试）
+    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "post_max_size", value: "{{ php_post_max_size }}" }  # POST 数据最大尺寸（如表单提交、文件上传）
+    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "upload_max_filesize", value: "{{ php_upload_max_filesize }}" }  # 单个文件上传最大尺寸
+    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "max_execution_time", value: "{{ php_max_execution_time }}" }  # PHP 脚本最大执行时间（秒）
+    # PHP-FPM 配置（Web 运行模式，Nginx 转发的 PHP 请求均使用此配置）
     - { path: "/etc/php/{{ php_version }}/fpm/php.ini", key: "post_max_size", value: "{{ php_post_max_size }}" }
-    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "upload_max_filesize", value: "{{ php_upload_max_filesize }}" }
     - { path: "/etc/php/{{ php_version }}/fpm/php.ini", key: "upload_max_filesize", value: "{{ php_upload_max_filesize }}" }
-    - { path: "/etc/php/{{ php_version }}/cli/php.ini", key: "max_execution_time", value: "{{ php_max_execution_time }}" }
     - { path: "/etc/php/{{ php_version }}/fpm/php.ini", key: "max_execution_time", value: "{{ php_max_execution_time }}" }
 
+# 配置 PHP-FPM 的 www 池配置文件（www.conf）
+# PHP-FPM 以「池」为单位管理进程，www 是默认池（处理 Nginx 转发的 PHP 请求）
 - name: 配置 PHP-FPM www.conf
-  template:
-    src: www.conf.j2
-    dest: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
-    owner: root
-    group: root
-    mode: '0644'
-  notify: restart php-fpm
+  template:  # Ansible 内置模块，用于通过模板文件生成目标配置文件（支持变量替换）
+    src: www.conf.j2  # 模板文件路径（.j2 是 Jinja2 模板后缀，内部可使用变量动态生成配置）
+    dest: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"  # 目标配置文件路径（覆盖默认的 www.conf）
+    owner: root  # 目标文件所有者：root（系统管理员，确保权限安全）
+    group: root  # 目标文件所属组：root
+    mode: '0644'  # 目标文件权限：0644（所有者可读可写，其他用户只读，符合系统配置文件权限规范）
+  notify: restart php-fpm  # 触发处理器：配置文件修改后，自动重启 php-fpm 服务（使配置生效）

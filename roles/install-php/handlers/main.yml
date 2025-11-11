@@ -1,5 +1,7 @@
----
+# 处理器（Handler）：重启 PHP-FPM 服务
+# 特性：仅在触发它的任务（如修改 php.ini、www.conf 配置）发生变更时才执行，未变更则跳过
+# 用途：PHP-FPM 配置文件（如 php.ini、www.conf）修改后，必须重启服务才能使配置生效
 - name: restart php-fpm
-  service:
-    name: php{{ php_version }}-fpm
-    state: restarted
+  service:  # Ansible 内置模块，用于管理系统服务（支持 systemd、upstart 等服务管理器）
+    name: php{{ php_version }}-fpm  # 要操作的服务名称（动态拼接 PHP 版本，如 php7.4-fpm、php8.1-fpm）
+    state: restarted  # 服务状态：确保服务已重启（无论之前是运行还是停止，都会执行重启操作）

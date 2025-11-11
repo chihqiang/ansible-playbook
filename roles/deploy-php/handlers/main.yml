@@ -1,10 +1,18 @@
----
+# 处理器（Handler）：重启 PHP-FPM 服务
+# 触发条件：当修改 PHP 配置文件（php.ini、www.conf）的任务发生变更时触发
+# 核心目的：PHP-FPM 是守护进程，配置文件修改后必须重启服务才能加载新配置
 - name: restart php-fpm
-  service:
-    name: php{{ php_version }}-fpm
-    state: restarted
+  service:  # Ansible 内置模块，用于管理 Linux 系统服务（兼容 systemd、sysvinit 等）
+    name: php{{ php_version }}-fpm  # 服务名称（动态拼接 PHP 版本，如 php7.4-fpm、php8.2-fpm）
+    # 适配 Ubuntu/Debian 系统的 PHP-FPM 服务命名规范（版本号嵌入服务名）
+    state: restarted  # 服务状态：强制重启（无论之前是否运行，都会执行重启操作）
+    # 区别于 "started"（仅启动停止的服务），"restarted" 确保配置变更生效
 
+# 处理器（Handler）：重载 Nginx 服务
+# 触发条件：当修改 Nginx 配置文件（如 nginx.conf、站点配置）的任务发生变更时触发
+# 核心目的：Nginx 配置修改后，无需完全重启（避免服务中断），重载配置即可生效
 - name: reload nginx
   service:
-    name: nginx
-    state: reloaded
+    name: nginx  # 服务名称：Nginx 服务名固定为 "nginx"（Ubuntu/Debian 系统默认）
+    state: reloaded  # 服务状态：重载配置（发送 SIGHUP 信号，不中断现有连接）
+    # 区别于 "restarted"（终止进程再启动），"reloaded" 实现平滑配置更新，适合生产环境
