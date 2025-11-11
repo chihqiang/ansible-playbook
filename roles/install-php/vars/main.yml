@@ -10,5 +10,7 @@ pm_min_spare_servers: 3
 pm_max_spare_servers: 10
 # PHP 配置项：POST 请求最大数据大小（影响上传文件大小）
 php_upload_max_filesize: "100M"
+# PHP 配置项：POST 最大数据大小（通常大于或等于 upload_max_filesize）
+php_post_max_size: "100M"
 # PHP 配置项：脚本最大执行时间（秒），防止超时
 php_max_execution_time: 60

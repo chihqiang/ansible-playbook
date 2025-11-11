@@ -1,7 +1,7 @@
 - name: 清理系统中已存在的 ondrej PHP 源
   shell: |
     rm -rf /etc/apt/sources.list.d/*ondrej*.list
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: 安装 Ubuntu 软件属性管理工具（software-properties-common）
   apt:
@@ -46,7 +46,7 @@
       - php{{ php_version }}-mysql
       - php{{ php_version }}-swoole
     state: present
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: 安装 Composer
   get_url:

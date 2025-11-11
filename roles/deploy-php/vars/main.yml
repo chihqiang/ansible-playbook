@@ -3,11 +3,11 @@ domain: www.think.com
 # Git 仓库地址（使用的是 Gitee 上的 ThinkPHP 源码）
 app_repo: https://gitee.com/top-think/think.git
 # 项目版本（可以是分支名，如 "main"，也可以是 tag，比如 "v6.0.0"）
-app_version: "8.x"
+app_version: "6.x"
 # 应用部署根目录（最终代码将放到 /data/wwwroot/www.think.com）
 wwwroot: /data/wwwroot
 # 使用的 PHP 版本号（影响 composer 路径和 php-fpm 处理）
-php_version: 8.1
+php_version: 7.4
 # Web 服务运行用户（用于设置项目目录权限，避免写权限问题）
 app_user: www-data
 # Web 服务运行用户所属用户组（一般与 app_user 相同）
