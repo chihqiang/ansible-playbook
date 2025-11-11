@@ -58,17 +58,17 @@
   delay: 3  # 重试间隔（3 秒）
   become: true  # 用普通用户执行，避免依赖文件权限异常
 
-# 创建 runtime 目录并授权（ThinkPHP 框架必需目录，用于存储动态生成的文件）
-# 核心：目录需 Web 用户可写，用于存储日志、缓存、临时文件等
-- name: 创建 runtime 目录并授权
+- name: 创建多目录并授权
   file:
-    path: "{{ wwwroot }}/{{ domain }}/runtime"  # ThinkPHP 框架默认动态文件目录
-    state: directory  # 确保目录存在（不存在则创建）
-    owner: "{{ app_user }}"  # Web 用户需写入权限
-    group: "{{ app_group }}"  # 同组用户协同权限
-    mode: '0775'  # 目录权限：所有者/组可读写执行（满足动态文件生成需求）
-    recurse: yes  # 递归授权子目录（若已存在子目录）
-  become: true  # 创建/修改系统目录权限需 root 权限
+    path: "{{ item }}"  # 循环遍历多目录列表
+    state: directory    # 确保目录存在（不存在则创建）
+    owner: "{{ app_user }}"  # Web 用户（如 www、nginx、apache）
+    group: "{{ app_group }}" # 对应 Web 用户组
+    mode: '0775'        # 目录权限：所有者/组可读写执行，其他只读（符合安全规范）
+    recurse: yes        # 递归授权子目录和文件（若目录已存在）
+  become: true          # 需 root 权限创建/修改目录权限
+  loop:                 # 多目录列表（根据实际需求扩展）
+    - "{{ wwwroot }}/{{ domain }}/runtime"
 
 # 检查 Nginx 站点配置文件是否已存在（前置判断，避免重复创建覆盖现有配置）
 # 核心：仅首次部署时生成配置，后续手动修改的配置不会被覆盖
