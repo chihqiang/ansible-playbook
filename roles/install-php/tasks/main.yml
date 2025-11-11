@@ -62,11 +62,8 @@
 # 安装 Composer（PHP 依赖管理工具，项目依赖包安装/更新必需）
 - name: 安装 Composer
   shell: |
-    # 1. 用 PHP 内置 copy 函数下载 Composer 官方安装脚本（避免依赖 wget/curl）
     php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-    # 2. 执行安装脚本：安装到 /usr/local/bin（系统全局路径），命名为 composer（直接命令调用）
-    php composer-setup.php --install-dir=/usr/local/bin --filename=composer{{ php_version }}
-    # 3. 安装完成后删除临时安装脚本，清理环境
+    php composer-setup.php --install-dir=/etc/php/{{ php_version }} --filename=composer
     rm composer-setup.php
   async: 300  # 异步执行超时：最长 300 秒（应对网络慢导致的下载/安装耗时）
   poll: 10  # 每 10 秒检查一次执行状态

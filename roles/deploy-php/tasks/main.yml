@@ -51,7 +51,7 @@
   shell:
     cmd: |
       cd "{{ wwwroot }}/{{ domain }}"  # 进入项目根目录（Composer 需读取 composer.json）
-      /usr/local/bin/composer{{ php_version }} install --no-dev --optimize-autoloader --no-interaction
+      /etc/php/{{ php_version }}/composer install --no-dev --optimize-autoloader --no-interaction
   register: composer_install_result  # 注册安装结果
   until: composer_install_result is succeeded  # 安装失败自动重试
   retries: 2  # 重试次数（应对 Composer 镜像网络波动）
