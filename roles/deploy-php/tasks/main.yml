@@ -1,50 +1,92 @@
-# 1. 拉取最新代码到应用目录（核心步骤：从 Git 仓库获取项目源代码）
-- name: 拉取最新代码到应用目录
-  git:  # Ansible 内置模块，用于 Git 版本控制相关操作（拉取、切换分支等）
-    repo: "{{ app_repo }}"                          # Git 仓库地址（通过变量传入，支持 HTTP/SSH 协议，如 https://github.com/xxx/xxx.git）
-    dest: "{{ wwwroot }}/{{ domain }}"              # 代码拉取后的目标目录（拼接网站根路径 + 域名，如 /var/www/example.com）
-    version: "{{ app_version }}"                    # 要拉取的代码版本（支持分支名、标签名、commit ID，如 main、v1.0.0）
-    force: yes                                      # 强制拉取：若目标目录已存在代码，覆盖本地修改（避免因本地文件冲突导致拉取失败）
-    accept_hostkey: yes                             # 自动接受 Git 仓库的主机密钥（首次拉取 SSH 协议仓库时，避免手动确认密钥的交互阻塞）
+# 添加 Git 安全目录例外（优先执行，解决 Git 2.35+ 版本的目录所有权不匹配报错）
+# 原理：将应用目录添加到 Git 全局安全列表，跳过所有者校验（因 Ansible 执行用户与目录所有者可能不一致）
+- name: 添加 Git 安全目录例外
+  command: git config --global --add safe.directory "{{ wwwroot }}/{{ domain }}"
+  become: true  # 全局 Git 配置需 root 权限才能生效
+  changed_when: false  # 重复执行无状态变更，标记为未修改
+  when: (wwwroot | default('')) != '' and (domain | default('')) != ''  # 变量非空时才执行，避免路径错误
 
-# 2. 使用 composer 安装依赖（项目运行必需：安装 PHP 第三方依赖包，如框架、工具类）
-- name: 安装 Composer 依赖
-  shell: |
-    cd {{ wwwroot }}/{{ domain }}  # 进入项目根目录（Composer 需在项目根目录执行，读取 composer.json 文件）
-    /usr/local/bin/composer{{ php_version }} install  # 执行 Composer 安装命令（指定绝对路径，避免环境变量问题）
-    # 注：composer install 会根据项目根目录的 composer.lock 文件安装固定版本的依赖，确保环境一致性
-
-# 3. 设置代码目录权限（安全与运行必需：确保 Web 服务用户能读写项目文件）
-- name: 设置项目文件权限
-  file:  # Ansible 内置模块，用于文件/目录的权限、所有者/组管理
-    path: "{{ wwwroot }}/{{ domain }}"  # 目标目录：项目根目录
-    recurse: yes                       # 递归应用权限：目录下所有文件和子目录都生效
-    owner: "{{ app_user }}"            # 目录所有者：Web 服务运行用户（如 www-data、nginx，通过变量传入）
-    group: "{{ app_group }}"           # 目录所属组：Web 服务运行组（与所有者一致，确保权限统一）
-
-# 4. 创建 runtime 目录（项目运行必需：存储日志、缓存、临时文件等动态生成的内容）
-- name: 创建 runtime 目录
+# 创建应用目录并设置初始权限（提前初始化目录，避免后续拉取代码时权限不足）
+# 核心：确保目录所有者为 Web 服务用户，基础权限 0755（所有者读写执行，其他只读）
+- name: 创建应用目录并授权
   file:
-    path: "{{ wwwroot }}/{{ domain }}/runtime"  # 目标路径：项目内的 runtime 目录
-    state: directory                             # 状态：确保目录存在（不存在则创建，已存在则不操作）
-    owner: "{{ app_user }}"                      # 所有者：Web 服务用户（需写入权限，用于生成日志/缓存）
-    group: "{{ app_group }}"                     # 所属组：Web 服务组
-    mode: '0775'                                 # 目录权限：0775（所有者/组可读可写可执行，其他用户只读）
-    # 0775 权限说明：Web 用户可读写（生成文件），同组用户可协作，其他用户无写入权限（安全）
+    path: "{{ wwwroot }}/{{ domain }}"  # 目标目录（网站根路径 + 域名，如 /data/wwwroot/www.think.com）
+    owner: "{{ app_user }}"  # Web 服务运行用户（如 www、nginx，确保后续文件可读写）
+    group: "{{ app_group }}"  # 对应运行组，与所有者一致确保权限统一
+    mode: '0755'  # 目录基础权限，符合最小权限原则
+    state: directory  # 确保目录存在（不存在则创建，已存在不操作）
+    recurse: yes  # 递归授权子目录（若目录已存在，子目录也同步权限）
+  become: true  # 创建系统级目录（/data/wwwroot）需 root 权限
 
-# 5. 检查 Nginx 配置文件是否已存在（前置判断：避免重复创建配置文件）
-- name: 检查 Nginx 配置文件是否存在
-  stat:  # Ansible 内置模块，用于获取文件/目录的状态信息（是否存在、权限、修改时间等）
-    path: "/etc/nginx/conf.d/{{ domain }}.conf"  # 要检查的文件路径：Nginx 站点配置文件（以域名为文件名，便于识别）
-  register: nginx_conf_stat  # 注册检查结果到变量 nginx_conf_stat，后续通过该变量判断文件是否存在
+# 拉取最新代码到应用目录（核心步骤：从 Git 仓库获取项目源代码）
+- name: 拉取最新代码到应用目录
+  git:
+    repo: "{{ app_repo }}"  # Git 仓库地址（支持 HTTP/SSH 协议，如 gitee、github 仓库）
+    dest: "{{ wwwroot }}/{{ domain }}"  # 代码拉取目标目录
+    version: "{{ app_version | default('main') }}"  # 拉取版本（分支/标签/commit ID，默认 main 分支）
+    update: yes  # 存在旧代码时自动更新
+    force: yes  # 强制覆盖本地修改，避免因本地文件冲突导致拉取失败
+    accept_hostkey: yes  # 首次拉取 SSH 协议仓库时，自动接受主机密钥（避免交互阻塞）
+    depth: 1  # 仅拉取最新 1 次提交，减少传输耗时（部署场景无需历史提交记录）
+  register: git_pull_result  # 注册拉取结果，供后续任务判断
+  until: git_pull_result is succeeded  # 拉取失败时自动重试
+  retries: 3  # 重试次数（应对网络波动）
+  delay: 5  # 重试间隔（5 秒）
+  become: true  # 用普通用户（如 ansible 执行用户）拉取，避免代码文件所有者为 root
 
-# 6. 初始化 Nginx 配置（仅首次部署时执行：生成站点专属 Nginx 配置）
-- name: 初始化 Nginx 配置
-  template:  # Ansible 内置模块，通过 Jinja2 模板生成目标文件（支持变量替换，动态适配项目）
-    src: nginx-php.conf.j2  # 模板文件路径（.j2 后缀为 Jinja2 模板，内部可嵌入变量，如项目路径、域名、PHP-FPM 端口等）
-    dest: "/etc/nginx/conf.d/{{ domain }}.conf"  # 目标配置文件路径（Nginx 会自动加载 conf.d 目录下的 .conf 文件）
-    owner: root  # 配置文件所有者：root（系统管理员，确保配置安全，避免普通用户篡改）
-    group: root  # 配置文件所属组：root
-    mode: '0644' # 配置文件权限：0644（所有者可读可写，其他用户只读，符合系统配置文件权限规范）
-  when: not nginx_conf_stat.stat.exists  # 条件判断：仅当 Nginx 配置文件不存在时才执行（避免覆盖已修改的配置）
-  notify: reload nginx  # 触发处理器：配置文件创建后，重载 Nginx 服务（使新配置生效，且不中断现有连接）
+# 统一设置项目文件权限（覆盖 Git 拉取时生成的默认权限，确保 Web 服务可正常访问）
+# 核心：所有文件/目录所有者统一为 Web 用户，避免因权限不匹配导致 403 错误
+- name: 统一设置项目文件权限
+  file:
+    path: "{{ wwwroot }}/{{ domain }}"  # 目标项目根目录
+    owner: "{{ app_user }}"  # 归属于 Web 服务用户
+    group: "{{ app_group }}"  # 归属于 Web 服务组
+    recurse: yes  # 递归应用到所有子文件/目录
+    mode: '0755'  # 目录权限（文件会继承基础权限，后续可通过细粒度配置调整）
+  become: true  # 修改文件权限需 root 权限
+
+# 安装 Composer 依赖（适配服务器实际 Composer 路径，生产环境优化配置）
+# 核心：安装项目运行必需的 PHP 第三方依赖，跳过开发依赖减少资源占用
+- name: 安装 Composer 依赖
+  shell:
+    cmd: |
+      cd "{{ wwwroot }}/{{ domain }}"  # 进入项目根目录（Composer 需读取 composer.json）
+      /usr/local/bin/composer{{ php_version }} install --no-dev --optimize-autoloader --no-interaction
+  register: composer_install_result  # 注册安装结果
+  until: composer_install_result is succeeded  # 安装失败自动重试
+  retries: 2  # 重试次数（应对 Composer 镜像网络波动）
+  delay: 3  # 重试间隔（3 秒）
+  become: true  # 用普通用户执行，避免依赖文件权限异常
+
+# 创建 runtime 目录并授权（ThinkPHP 框架必需目录，用于存储动态生成的文件）
+# 核心：目录需 Web 用户可写，用于存储日志、缓存、临时文件等
+- name: 创建 runtime 目录并授权
+  file:
+    path: "{{ wwwroot }}/{{ domain }}/runtime"  # ThinkPHP 框架默认动态文件目录
+    state: directory  # 确保目录存在（不存在则创建）
+    owner: "{{ app_user }}"  # Web 用户需写入权限
+    group: "{{ app_group }}"  # 同组用户协同权限
+    mode: '0775'  # 目录权限：所有者/组可读写执行（满足动态文件生成需求）
+    recurse: yes  # 递归授权子目录（若已存在子目录）
+  become: true  # 创建/修改系统目录权限需 root 权限
+
+# 检查 Nginx 站点配置文件是否已存在（前置判断，避免重复创建覆盖现有配置）
+# 核心：仅首次部署时生成配置，后续手动修改的配置不会被覆盖
+- name: 检查 Nginx 站点配置文件状态
+  stat:
+    path: "/etc/nginx/conf.d/{{ domain }}.conf"  # Nginx 站点配置文件路径（以域名为文件名，便于识别）
+  register: nginx_conf_stat  # 注册检查结果（存在/不存在）
+  become: true  # 访问 /etc/nginx 目录需 root 权限
+
+# 生成 Nginx 站点配置（仅首次部署执行，通过模板动态适配项目环境）
+# 核心：基于 Jinja2 模板生成专属配置，适配项目路径、域名、PHP 版本等
+- name: 生成 Nginx 站点配置
+  template:
+    src: nginx-php.conf.j2  # 配置模板文件（.j2 后缀，支持变量替换）
+    dest: "/etc/nginx/conf.d/{{ domain }}.conf"  # 目标配置文件路径（Nginx 自动加载 conf.d 目录下的 .conf 文件）
+    owner: root  # 配置文件所有者为 root（避免普通用户篡改）
+    group: root  # 配置文件所属组为 root
+    mode: '0644'  # 配置文件权限：只读（所有者可写，其他只读，符合系统配置规范）
+  when: not nginx_conf_stat.stat.exists  # 仅当配置文件不存在时执行（避免覆盖）
+  become: true  # 写入 /etc/nginx 目录需 root 权限
+  notify: reload nginx  # 配置生成后触发重载 Nginx（使配置生效，不中断现有连接）
